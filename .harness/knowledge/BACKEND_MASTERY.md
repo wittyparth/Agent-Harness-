@@ -1,761 +1,702 @@
-# 🔧 BACKEND MASTERY
+# 🔧 BACKEND ENGINEERING MASTERY
 
-> **Deep expertise for building production-grade backend applications.**
-> **Reference this document during Phases 06, 07, 09, 11, 12.**
-
----
-
-## 🎯 BACKEND EXCELLENCE STANDARDS
-
-A production-grade backend must achieve:
-- **Response Time**: P50 < 100ms, P95 < 200ms, P99 < 500ms
-- **Availability**: 99.9% uptime target
-- **Security**: OWASP Top 10 protected
-- **Scalability**: Horizontally scalable architecture
-- **Observability**: Structured logging, metrics, tracing
-- **Documentation**: Complete OpenAPI specification
-- **Testing**: > 80% code coverage
+> **Complete knowledge for building production-grade backend systems.**
+> **What a 20+ year veteran engineer knows about building APIs and services.**
 
 ---
 
-## 📁 PROJECT STRUCTURE
+## 🎯 CORE MISSION
 
-### Recommended Structure (Language-Agnostic Pattern)
-
-```
-src/
-├── modules/                  # Feature modules (domain-driven)
-│   ├── auth/
-│   │   ├── auth.controller.ts    # HTTP handlers
-│   │   ├── auth.service.ts       # Business logic
-│   │   ├── auth.repository.ts    # Data access
-│   │   ├── auth.dto.ts           # Data transfer objects
-│   │   ├── auth.validation.ts    # Input validation
-│   │   └── auth.test.ts          # Tests
-│   │
-│   ├── users/
-│   │   ├── users.controller.ts
-│   │   ├── users.service.ts
-│   │   ├── users.repository.ts
-│   │   └── ...
-│   │
-│   └── [feature]/
-│
-├── common/                   # Shared code
-│   ├── middleware/
-│   │   ├── auth.middleware.ts
-│   │   ├── rate-limit.middleware.ts
-│   │   ├── error-handler.middleware.ts
-│   │   └── request-logger.middleware.ts
-│   │
-│   ├── guards/               # Authorization guards
-│   │   ├── auth.guard.ts
-│   │   └── roles.guard.ts
-│   │
-│   ├── decorators/           # Custom decorators
-│   │   ├── current-user.decorator.ts
-│   │   └── roles.decorator.ts
-│   │
-│   ├── filters/              # Exception filters
-│   │   └── http-exception.filter.ts
-│   │
-│   ├── interceptors/
-│   │   ├── transform.interceptor.ts
-│   │   └── logging.interceptor.ts
-│   │
-│   └── utils/
-│       ├── hash.ts
-│       ├── token.ts
-│       └── validation.ts
-│
-├── database/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   └── migrations/
-│   ├── seeds/
-│   │   └── seed.ts
-│   └── prisma.service.ts
-│
-├── config/
-│   ├── app.config.ts
-│   ├── database.config.ts
-│   ├── jwt.config.ts
-│   └── index.ts
-│
-├── types/
-│   ├── express.d.ts          # Express type extensions
-│   └── global.d.ts
-│
-└── main.ts                   # Application entry point
-```
+The backend is the foundation. Users never see it, but they experience every flaw. Your job is to build systems that are:
+- **Secure**: Protect user data, prevent unauthorized access
+- **Reliable**: Handle failures gracefully, maintain uptime
+- **Performant**: Respond quickly under load
+- **Scalable**: Grow with demand without redesign
+- **Maintainable**: Easy to understand, debug, and extend
 
 ---
 
-## 🔐 AUTHENTICATION PATTERNS
+## 📋 COMPLETE BACKEND IMPLEMENTATION GUIDE
 
-### JWT with Refresh Token Rotation
+### PHASE 1: API DESIGN (Before Writing Any Code)
 
-```typescript
-// common/utils/token.ts
-import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
+#### 1.1 API Contract First
 
-interface TokenPayload {
-  userId: string;
-  email: string;
-  role: string;
-}
+**Before implementing anything, define the complete API:**
+- All endpoints with paths and HTTP methods
+- Request body schemas with types and validation rules
+- Response schemas for success AND all error cases
+- Authentication requirements per endpoint
+- Rate limit tiers per endpoint category
+- Pagination strategy for list endpoints
 
-export const ACCESS_TOKEN_EXPIRY = '15m';
-export const REFRESH_TOKEN_EXPIRY = '7d';
+**Why this matters**: Frontend and backend can develop in parallel. No surprises during integration. API becomes the contract.
 
-export function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET!, {
-    expiresIn: ACCESS_TOKEN_EXPIRY,
-  });
-}
+#### 1.2 RESTful Design Principles
 
-export function generateRefreshToken(): string {
-  return randomBytes(64).toString('hex');
-}
+**Resource Naming**
+- Use nouns, not verbs: `/users` not `/getUsers`
+- Use plural: `/users` not `/user`
+- Nest for relationships: `/users/{id}/orders`
+- Use lowercase with hyphens: `/user-preferences` not `/userPreferences`
 
-export function verifyAccessToken(token: string): TokenPayload {
-  return jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as TokenPayload;
-}
+**HTTP Methods**
+| Method | Purpose | Idempotent | Body |
+|--------|---------|------------|------|
+| GET | Read resource(s) | Yes | No |
+| POST | Create resource | No | Yes |
+| PUT | Full update/replace | Yes | Yes |
+| PATCH | Partial update | Yes | Yes |
+| DELETE | Remove resource | Yes | No |
 
-// modules/auth/auth.service.ts
-export class AuthService {
-  async login(email: string, password: string) {
-    // 1. Find user
-    const user = await this.userRepository.findByEmail(email);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    
-    // 2. Verify password
-    const isValid = await this.verifyPassword(password, user.passwordHash);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    
-    // 3. Generate tokens
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-    
-    const refreshToken = generateRefreshToken();
-    const refreshTokenHash = await hashToken(refreshToken);
-    
-    // 4. Store refresh token (with family tracking for rotation)
-    await this.tokenRepository.create({
-      userId: user.id,
-      tokenHash: refreshTokenHash,
-      family: randomBytes(16).toString('hex'), // Token family for detecting reuse
-      expiresAt: addDays(new Date(), 7),
-    });
-    
-    return {
-      accessToken,
-      refreshToken,
-      user: this.sanitizeUser(user),
-    };
-  }
-  
-  async refreshTokens(refreshToken: string) {
-    // 1. Find token
-    const tokenHash = await hashToken(refreshToken);
-    const storedToken = await this.tokenRepository.findByHash(tokenHash);
-    
-    if (!storedToken || storedToken.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-    
-    // 2. Check if token was already used (reuse detection)
-    if (storedToken.usedAt) {
-      // Token reuse detected! Revoke entire family
-      await this.tokenRepository.revokeFamily(storedToken.family);
-      throw new UnauthorizedException('Token reuse detected');
-    }
-    
-    // 3. Mark token as used
-    await this.tokenRepository.markUsed(storedToken.id);
-    
-    // 4. Generate new tokens
-    const user = await this.userRepository.findById(storedToken.userId);
-    const newAccessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-    
-    const newRefreshToken = generateRefreshToken();
-    const newRefreshTokenHash = await hashToken(newRefreshToken);
-    
-    // 5. Store new refresh token (same family)
-    await this.tokenRepository.create({
-      userId: user.id,
-      tokenHash: newRefreshTokenHash,
-      family: storedToken.family, // Same family
-      expiresAt: addDays(new Date(), 7),
-    });
-    
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    };
-  }
-}
-```
+**HTTP Status Codes**
+| Code | When to Use |
+|------|-------------|
+| 200 | Successful GET, PUT, PATCH, DELETE |
+| 201 | Successful POST (resource created) |
+| 204 | Successful DELETE (no content to return) |
+| 400 | Invalid input (validation failed) |
+| 401 | Not authenticated (no valid credentials) |
+| 403 | Authenticated but not authorized |
+| 404 | Resource not found |
+| 409 | Conflict (duplicate resource, state conflict) |
+| 422 | Valid syntax but unprocessable (business logic rejected) |
+| 429 | Rate limit exceeded |
+| 500 | Server error (something unexpected broke) |
 
-### Password Hashing
+#### 1.3 API Versioning
 
-```typescript
-// common/utils/hash.ts
-import argon2 from 'argon2';
+**Version from day one.** Options:
+- URL prefix: `/api/v1/users` (recommended for simplicity)
+- Header: `Accept-Version: v1`
 
-// Argon2id is recommended (memory-hard, resistant to side-channel attacks)
-export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 65536, // 64 MB
-    timeCost: 3,       // 3 iterations
-    parallelism: 4,    // 4 parallel threads
-  });
-}
-
-export async function verifyPassword(
-  password: string,
-  hash: string
-): Promise<boolean> {
-  return argon2.verify(hash, password);
-}
-
-// For tokens (simpler, faster)
-export async function hashToken(token: string): Promise<string> {
-  const { createHash } = await import('crypto');
-  return createHash('sha256').update(token).digest('hex');
-}
-```
+**Migration strategy**: Support v1 and v2 simultaneously during migration period.
 
 ---
 
-## 🛡️ AUTHORIZATION PATTERNS
+### PHASE 2: AUTHENTICATION
 
-### Role-Based Access Control (RBAC)
+#### 2.1 Authentication Methods
 
-```typescript
-// common/decorators/roles.decorator.ts
-import { SetMetadata } from '@nestjs/common';
+**JWT (JSON Web Tokens)**
+- Stateless, scalable across servers
+- Use for: APIs accessed by web/mobile apps
+- Access token: Short-lived (15 minutes)
+- Refresh token: Longer-lived (7-30 days), stored securely
+- Implement refresh token rotation (new refresh token on each use)
+- Maintain revocation list for logout/security events
 
-export const ROLES_KEY = 'roles';
+**Session-Based**
+- Server stores session state
+- Use for: Traditional web apps, simpler to implement
+- Session ID in HttpOnly cookie
+- Server-side session store (Redis for distributed systems)
+- Add CSRF protection
 
-export enum Role {
-  ADMIN = 'ADMIN',
-  USER = 'USER',
-  GUEST = 'GUEST',
-}
+**API Keys**
+- Use for: Service-to-service, third-party integrations
+- Hash and store (never store plain text)
+- Scope to specific permissions
+- Rotate regularly (every 90 days recommendation)
+- Monitor for anomalous usage
 
-export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+#### 2.2 Password Security
 
-// common/guards/roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+**Storage**
+- NEVER store plain text passwords
+- Use Argon2id (preferred) or bcrypt (industry standard)
+- Salt is automatic with these algorithms
+- Use high work factor (12+ for bcrypt)
 
-@Injectable()
-export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+**Requirements**
+- Minimum 8 characters (recommend 12+)
+- Allow long passwords (up to 100+ chars)
+- Check against known breached passwords
+- Don't require arbitrary complexity rules (proven less effective)
+
+**Password Reset Flow**
+1. User requests reset with email
+2. Generate cryptographically random token (minimum 32 bytes)
+3. Hash token, store with expiration (1 hour max)
+4. Send email with reset link containing plain token
+5. On reset page: verify token hash exists and not expired
+6. Allow password change: enforce password rules
+7. Mark token as used (one-time use)
+8. Invalidate ALL sessions for the user (security measure)
+9. Send confirmation email that password was changed
+10. Optionally: notify user of location/device that made change
+
+**Password Reset Security Considerations:**
+- Don't reveal if email exists (same message for found/not found)
+- Rate limit reset requests (3 per hour per email)
+- Token must be single-use
+- Short expiration (1 hour maximum)
+- Log all reset attempts for security audit
+- Alert user if multiple reset attempts
+
+#### 2.3 Email Verification Flow
+
+**Registration with Email Verification:**
+1. User registers with email/password
+2. Create user in "pending" or "unverified" state
+3. Generate verification token (32+ bytes random)
+4. Hash token, store with user
+5. Send verification email with link containing plain token
+6. User clicks link → verify token hash matches
+7. Mark email as verified, activate account
+8. Allow token refresh if expired (new token, same flow)
+
+**Email Verification Best Practices:**
+- Longer expiration than password reset (24-72 hours)
+- Allow resend (rate limited: 3 per hour)
+- Allow login before verification but limit features
+- Re-verify if email changes
+- Double opt-in for marketing compliance
+
+#### 2.4 OAuth / Social Login Flows
+
+**OAuth 2.0 Authorization Code Flow (Recommended for Web):**
+1. User clicks "Login with Google/GitHub/etc."
+2. Redirect to provider's authorization URL with:
+   - client_id (your app's ID)
+   - redirect_uri (where to return)
+   - scope (what data you need)
+   - state (CSRF protection, random string, store in session)
+   - response_type=code
+3. User authenticates with provider
+4. Provider redirects back with authorization code + state
+5. Verify state matches what you stored (CSRF protection)
+6. Exchange code for tokens (server-side, using client_secret):
+   - POST to provider's token endpoint
+   - Include: code, client_id, client_secret, redirect_uri
+   - Receive: access_token, refresh_token (optional), id_token (OIDC)
+7. Fetch user profile using access_token
+8. Find or create user in your database (see account linking)
+9. Create session/JWT for your application
+
+**OAuth Provider-Specific Notes:**
+
+| Provider | Scopes to Request | User ID Field |
+|----------|-------------------|---------------|
+| Google | openid email profile | sub (from id_token) |
+| GitHub | user:email | id |
+| Facebook | email public_profile | id |
+| Microsoft | openid email profile | sub (from id_token) |
+| Apple | email name | sub (from id_token) |
+
+**OAuth Security Requirements:**
+- ALWAYS verify state parameter (CSRF protection)
+- Exchange code server-side (never expose client_secret)
+- Validate id_token signature if using OIDC
+- Store provider's user ID (not email) as primary link
+- Use HTTPS for all redirect URIs
+- Keep client_secret truly secret
+
+#### 2.5 Account Linking
+
+**When User OAuth's with Same Email as Existing Account:**
+
+| Scenario | Recommended Action |
+|----------|-------------------|
+| Existing password user, new OAuth | Link accounts (same email, verified) OR require login first |
+| Existing OAuth user, same provider | Log in (match by provider + provider_user_id) |
+| Existing OAuth user, different provider | Link if emails match and verified |
+| No existing account | Create new account |
+
+**Account Linking Data Model:**
+```
+users:
+  - id
+  - email
+  - password_hash (nullable for OAuth-only users)
+  - email_verified
   
-  canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()]
-    );
-    
-    if (!requiredRoles) {
-      return true; // No roles required
-    }
-    
-    const { user } = context.switchToHttp().getRequest();
-    return requiredRoles.includes(user.role);
-  }
-}
-
-// Usage in controller
-@Controller('admin')
-@UseGuards(AuthGuard, RolesGuard)
-export class AdminController {
-  @Get('users')
-  @Roles(Role.ADMIN)
-  getAllUsers() {
-    // Only admins can access
-  }
-}
+user_oauth_accounts:
+  - user_id (FK to users)
+  - provider (google, github, etc.)
+  - provider_user_id (unique per provider)
+  - access_token (encrypted)
+  - refresh_token (encrypted)
+  - created_at
+  
+Unique constraint: (provider, provider_user_id)
 ```
 
-### Resource Ownership Check
+**Account Linking Security:**
+- Only link if email is verified on both sides
+- Confirm with user before linking
+- Allow unlinking OAuth accounts
+- Keep at least one auth method (can't unlink last one)
 
-```typescript
-// Always check resource ownership
-async function updateProject(userId: string, projectId: string, data: UpdateProjectDto) {
-  const project = await this.projectRepository.findById(projectId);
-  
-  if (!project) {
-    throw new NotFoundException('Project not found');
-  }
-  
-  // Check ownership
-  if (project.ownerId !== userId) {
-    throw new ForbiddenException('You do not have access to this project');
-  }
-  
-  return this.projectRepository.update(projectId, data);
-}
-```
+#### 2.6 Session Security
+
+- Regenerate session ID after login (prevent session fixation)
+- Set secure cookie flags: HttpOnly, Secure, SameSite=Strict
+- Implement session timeout (absolute and idle)
+- Allow users to see/revoke active sessions
+- Invalidate all sessions on password change
+
+#### 2.4 Multi-Factor Authentication (MFA)
+
+Implement when security is critical:
+- TOTP (Time-based One-Time Password) - most common
+- SMS (less secure, but better than none)
+- Hardware keys (FIDO2/WebAuthn) - most secure
+- Recovery codes (stored securely, one-time use)
 
 ---
 
-## ✅ INPUT VALIDATION
+### PHASE 3: AUTHORIZATION
 
-### Zod Schema Validation (JavaScript/TypeScript)
+#### 3.1 Authorization Models
 
-```typescript
-// modules/users/users.validation.ts
-import { z } from 'zod';
+**Role-Based Access Control (RBAC)**
+- Users have roles, roles have permissions
+- Simple to understand and implement
+- Good for: Most applications
 
-export const createUserSchema = z.object({
-  email: z
-    .string()
-    .email('Invalid email format')
-    .max(255)
-    .transform((email) => email.toLowerCase().trim()),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(100)
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Password must contain uppercase, lowercase, and number'
-    ),
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .max(100)
-    .transform((name) => name.trim()),
-});
+**Attribute-Based Access Control (ABAC)**
+- Decisions based on user attributes, resource attributes, context
+- More flexible, more complex
+- Good for: Complex permission requirements
 
-export const updateUserSchema = z.object({
-  name: z.string().min(1).max(100).trim().optional(),
-  avatarUrl: z.string().url().optional(),
-});
+**Resource-Based Authorization**
+- Check ownership/relationship to resource
+- "Can this user edit THIS document?"
+- Always combine with role checks
 
-export const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  sort: z.enum(['createdAt', '-createdAt', 'name', '-name']).default('-createdAt'),
-});
+#### 3.2 Authorization Rules
 
-export type CreateUserInput = z.infer<typeof createUserSchema>;
-export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+**Check Authorization on Every Request**
+- Frontend checks are for UX only
+- Backend must validate independently
+- Don't trust frontend-provided role/permission info
 
-// Usage in controller
-@Post()
-async createUser(@Body() body: unknown) {
-  const data = createUserSchema.parse(body); // Throws if invalid
-  return this.usersService.create(data);
-}
-```
+**Defense in Depth**
+1. Route-level guards (is user authenticated?)
+2. Role checks (does user have required role?)
+3. Resource checks (does user own/have access to this specific resource?)
 
-### Express Validation Middleware
-
-```typescript
-// common/middleware/validate.middleware.ts
-import { Request, Response, NextFunction } from 'express';
-import { ZodSchema, ZodError } from 'zod';
-
-export function validate(schema: ZodSchema) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      req.body = schema.parse(req.body);
-      next();
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return res.status(400).json({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid input',
-            details: error.errors.map((e) => ({
-              field: e.path.join('.'),
-              message: e.message,
-            })),
-          },
-        });
-      }
-      next(error);
-    }
-  };
-}
-
-// Usage
-router.post('/users', validate(createUserSchema), createUser);
-```
+**Principle of Least Privilege**
+- Grant minimum access needed
+- Default to denied
+- Require explicit grants
 
 ---
 
-## 🚨 ERROR HANDLING
+### PHASE 4: INPUT VALIDATION
 
-### Centralized Error Handler
+#### 4.1 Validation Strategy
 
-```typescript
-// common/filters/http-exception.filter.ts
-import { 
-  ExceptionFilter, 
-  Catch, 
-  ArgumentsHost, 
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
+**Validate Everything**
+- Never trust client input
+- Validate on server even if validated on client
+- Validate early (at entry point)
 
-@Catch()
-export class HttpExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(HttpExceptionFilter.name);
-  
-  catch(exception: unknown, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
-    
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
-    let code = 'INTERNAL_ERROR';
-    let details: any = undefined;
-    
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const exceptionResponse = exception.getResponse();
-      
-      if (typeof exceptionResponse === 'object') {
-        message = (exceptionResponse as any).message || exception.message;
-        code = (exceptionResponse as any).code || this.getCodeFromStatus(status);
-        details = (exceptionResponse as any).details;
-      } else {
-        message = exceptionResponse;
-        code = this.getCodeFromStatus(status);
-      }
-    } else if (exception instanceof Error) {
-      message = 'Internal server error';
-      
-      // Log the actual error (don't expose to client)
-      this.logger.error(
-        `Unhandled error: ${exception.message}`,
-        exception.stack,
-        {
-          path: request.url,
-          method: request.method,
-          userId: (request as any).user?.id,
-        }
-      );
-    }
-    
-    // Don't expose internal errors to client
-    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
-      message = 'Internal server error';
-    }
-    
-    response.status(status).json({
-      error: {
-        code,
-        message,
-        details,
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-        path: request.url,
-        requestId: (request as any).id, // If using request ID middleware
-      },
-    });
-  }
-  
-  private getCodeFromStatus(status: number): string {
-    const codeMap: Record<number, string> = {
-      400: 'BAD_REQUEST',
-      401: 'UNAUTHORIZED',
-      403: 'FORBIDDEN',
-      404: 'NOT_FOUND',
-      409: 'CONFLICT',
-      422: 'UNPROCESSABLE_ENTITY',
-      429: 'RATE_LIMITED',
-      500: 'INTERNAL_ERROR',
-    };
-    return codeMap[status] || 'ERROR';
+**What to Validate**
+- Type: Is it the expected type (string, number, boolean, etc.)?
+- Format: Does it match expected format (email, UUID, date)?
+- Length/Range: Within acceptable bounds?
+- Allowed values: If enum, is it an allowed value?
+- Business rules: Does it make sense in context?
+
+**Validation Response**
+- Return all validation errors at once (not one at a time)
+- Specify which field failed and why
+- Use consistent error format:
+```
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input",
+    "details": [
+      {"field": "email", "message": "Invalid email format"},
+      {"field": "age", "message": "Must be at least 18"}
+    ]
   }
 }
 ```
 
-### Custom Exception Classes
+#### 4.2 Sanitization
 
-```typescript
-// common/exceptions/index.ts
-import { HttpException, HttpStatus } from '@nestjs/common';
+**Strip/Normalize**
+- Trim whitespace
+- Normalize unicode
+- Convert consistent case where appropriate
 
-export class ValidationException extends HttpException {
-  constructor(details: Array<{ field: string; message: string }>) {
-    super(
-      {
-        code: 'VALIDATION_ERROR',
-        message: 'Validation failed',
-        details,
-      },
-      HttpStatus.BAD_REQUEST
-    );
-  }
-}
-
-export class ResourceNotFoundException extends HttpException {
-  constructor(resource: string, id: string) {
-    super(
-      {
-        code: 'NOT_FOUND',
-        message: `${resource} with ID ${id} not found`,
-      },
-      HttpStatus.NOT_FOUND
-    );
-  }
-}
-
-export class ConflictException extends HttpException {
-  constructor(message: string) {
-    super(
-      {
-        code: 'CONFLICT',
-        message,
-      },
-      HttpStatus.CONFLICT
-    );
-  }
-}
-```
+**Escape for Context**
+- SQL: Use parameterized queries (never string concatenation)
+- HTML: Escape output (handled by templating engines)
+- JSON: Use proper serializers
 
 ---
 
-## 🚦 RATE LIMITING
+### PHASE 5: DATABASE DESIGN & ACCESS
 
-### Token Bucket with Redis
+#### 5.1 Schema Design Principles
 
-```typescript
-// common/middleware/rate-limit.middleware.ts
-import { Redis } from 'ioredis';
+**Normalization**
+- Start with 3rd Normal Form (no redundancy)
+- Denormalize only for proven performance needs
+- Document why when you denormalize
 
-interface RateLimitConfig {
-  limit: number;      // Max requests
-  window: number;     // Time window in seconds
-  keyPrefix: string;  // Redis key prefix
-}
+**Primary Keys**
+- Use UUIDs for public-facing IDs (prevent enumeration)
+- Use auto-increment integers for internal relations (smaller, faster)
+- Never expose internal IDs externally
 
-export function rateLimit(redis: Redis, config: RateLimitConfig) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const key = `${config.keyPrefix}:${getKey(req)}`;
-    
-    const multi = redis.multi();
-    multi.incr(key);
-    multi.expire(key, config.window);
-    
-    const results = await multi.exec();
-    const current = results?.[0]?.[1] as number;
-    
-    // Set rate limit headers
-    res.setHeader('X-RateLimit-Limit', config.limit);
-    res.setHeader('X-RateLimit-Remaining', Math.max(0, config.limit - current));
-    res.setHeader('X-RateLimit-Reset', Date.now() + config.window * 1000);
-    
-    if (current > config.limit) {
-      return res.status(429).json({
-        error: {
-          code: 'RATE_LIMITED',
-          message: 'Too many requests. Please try again later.',
-        },
-      });
-    }
-    
-    next();
-  };
-}
+**Standard Fields on Every Table**
+- `id`: Primary key
+- `created_at`: When created
+- `updated_at`: When last modified
+- `deleted_at`: For soft deletes (if used)
 
-function getKey(req: Request): string {
-  // Use user ID if authenticated, otherwise IP
-  const userId = (req as any).user?.id;
-  if (userId) return `user:${userId}`;
-  
-  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  return `ip:${ip}`;
-}
+**Soft Deletes vs Hard Deletes**
+- Soft delete: Set deleted_at, preserve data
+- Use when: Data recovery needed, audit trail, foreign key dependencies
+- Hard delete: Actually remove from database
+- Use when: Privacy compliance (GDPR), storage concerns, truly unnecessary
 
-// Usage with different limits
-const apiLimiter = rateLimit(redis, {
-  limit: 1000,
-  window: 3600, // 1 hour
-  keyPrefix: 'rl:api',
-});
+#### 5.2 Index Strategy
 
-const authLimiter = rateLimit(redis, {
-  limit: 5,
-  window: 900, // 15 minutes
-  keyPrefix: 'rl:auth',
-});
+**When to Add Index**
+- Columns used in WHERE clauses
+- Columns used in JOIN conditions
+- Columns used in ORDER BY
+- Unique constraints
 
-router.use('/api', apiLimiter);
-router.use('/api/auth/login', authLimiter);
-```
+**When NOT to Add Index**
+- Low-cardinality columns (few distinct values)
+- Tables with very few rows
+- Columns rarely queried
+- Write-heavy tables (indexes slow writes)
+
+**Composite Index Rules**
+- Column order matters (leftmost prefix rule)
+- Put equality conditions before range conditions
+- Include all columns used in WHERE for covering index
+
+#### 5.3 Query Optimization
+
+**Avoid N+1 Queries**
+- For each item in list, don't make separate query
+- Use eager loading/joins to fetch related data
+- Batch operations when possible
+
+**Pagination**
+- Offset/limit: Simple but slow for deep pages
+- Cursor-based: More complex but consistent performance
+- For large datasets, prefer cursor-based
+
+**Connection Pooling**
+- Don't create connection per request
+- Use connection pool with appropriate size
+- Size = (~2 × CPU cores) + disk spindles (rough guideline)
 
 ---
 
-## 📊 DATABASE PATTERNS
+### PHASE 6: CACHING
 
-### Repository Pattern
+#### 6.1 What to Cache
 
-```typescript
-// modules/users/users.repository.ts
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
-import { User, Prisma } from '@prisma/client';
+**Good Cache Candidates**
+- Frequently accessed data
+- Expensive to compute/fetch
+- Rarely changes
+- Same for many users
 
-@Injectable()
-export class UsersRepository {
-  constructor(private prisma: PrismaService) {}
-  
-  async findById(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
-    });
-  }
-  
-  async findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-  }
-  
-  async findMany(params: {
-    skip?: number;
-    take?: number;
-    cursor?: Prisma.UserWhereUniqueInput;
-    where?: Prisma.UserWhereInput;
-    orderBy?: Prisma.UserOrderByWithRelationInput;
-  }): Promise<{ users: User[]; total: number }> {
-    const [users, total] = await this.prisma.$transaction([
-      this.prisma.user.findMany(params),
-      this.prisma.user.count({ where: params.where }),
-    ]);
-    
-    return { users, total };
-  }
-  
-  async create(data: Prisma.UserCreateInput): Promise<User> {
-    return this.prisma.user.create({ data });
-  }
-  
-  async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
-    return this.prisma.user.update({
-      where: { id },
-      data,
-    });
-  }
-  
-  async delete(id: string): Promise<void> {
-    await this.prisma.user.delete({ where: { id } });
-  }
-}
-```
+**Poor Cache Candidates**
+- Rapidly changing data
+- User-specific data (in shared cache)
+- Extremely large responses
+- Data that must be real-time accurate
 
-### Transaction Pattern
+#### 6.2 Caching Layers
 
-```typescript
-// When multiple operations must succeed together
-async transferCredits(fromUserId: string, toUserId: string, amount: number) {
-  return this.prisma.$transaction(async (tx) => {
-    // Check sender balance
-    const sender = await tx.user.findUnique({
-      where: { id: fromUserId },
-    });
-    
-    if (!sender || sender.credits < amount) {
-      throw new BadRequestException('Insufficient credits');
-    }
-    
-    // Deduct from sender
-    await tx.user.update({
-      where: { id: fromUserId },
-      data: { credits: { decrement: amount } },
-    });
-    
-    // Add to recipient
-    await tx.user.update({
-      where: { id: toUserId },
-      data: { credits: { increment: amount } },
-    });
-    
-    // Create transfer record
-    return tx.transfer.create({
-      data: {
-        fromUserId,
-        toUserId,
-        amount,
-      },
-    });
-  });
-}
-```
+**Client-Side Cache**
+- Browser cache (via HTTP headers)
+- Good for: Static assets, rarely-changing API responses
+
+**CDN Cache**
+- Edge caching (via Cache-Control headers)
+- Good for: Static assets, public API responses
+
+**Application Cache**
+- In-memory (local to instance) or distributed (Redis/Memcached)
+- Good for: Database query results, computed data, sessions
+
+**Database Query Cache**
+- Built into many databases
+- Limited control, but useful for repeated exact queries
+
+#### 6.3 Cache Invalidation Strategies
+
+**Time-Based (TTL)**
+- Simplest: data expires after N seconds
+- Choose TTL based on: acceptable staleness, data change frequency
+- Use for: Data that can be slightly stale
+
+**Event-Based (Write-Through/Write-Behind)**
+- Invalidate/update cache on data change
+- Ensures cache matches database
+- Use for: Data that must be fresh
+
+**Cache-Aside Pattern**
+- Application checks cache, fetches from DB if miss, populates cache
+- Most flexible, most common
+- Application controls caching logic
 
 ---
 
-## 📝 LOGGING
+### PHASE 7: RATE LIMITING
 
-### Structured Logging
+#### 7.1 Rate Limit Tiers
 
-```typescript
-// common/utils/logger.ts
-import pino from 'pino';
+| Tier | Scope | Example Limit | Purpose |
+|------|-------|---------------|---------|
+| **Standard** | Per user | 1000 req/hour | Normal API usage |
+| **Anonymous** | Per IP | 100 req/hour | Unauthenticated access |
+| **Authentication** | Per IP | 5 req/15min | Prevent brute force |
+| **Expensive Operations** | Per user | 10 req/hour | Protect heavy endpoints |
+| **Upload** | Per user | 100MB/hour | Prevent storage abuse |
+| **Search** | Per user | 100 req/min | Protect search infrastructure |
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: process.env.NODE_ENV === 'development' ? {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-    },
-  } : undefined,
-  formatters: {
-    level: (label) => ({ level: label }),
-  },
-  base: {
-    service: process.env.SERVICE_NAME || 'api',
-    environment: process.env.NODE_ENV,
-  },
-});
+#### 7.2 Implementation Considerations
 
-// Create child logger with request context
-export function createRequestLogger(req: Request) {
-  return logger.child({
-    requestId: req.id,
-    userId: (req as any).user?.id,
-    method: req.method,
-    path: req.path,
-  });
-}
+**Algorithm Choice**
+- Token Bucket: Allows burst, smooth rate over time
+- Sliding Window: More accurate, slightly more complex
+- Fixed Window: Simplest, can have boundary issues
 
-// Usage
-app.use((req, res, next) => {
-  req.log = createRequestLogger(req);
-  next();
-});
-
-// In service
-this.logger.info({ userId, action: 'login' }, 'User logged in');
-this.logger.error({ error, userId }, 'Failed to process payment');
+**Response Headers**
 ```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 872
+X-RateLimit-Reset: 1609459200
+Retry-After: 3600 (on 429 response)
+```
+
+**Rate Limit by**
+- User ID (authenticated requests)
+- IP address (fallback, can be spoofed/shared)
+- API key (for service accounts)
+- Combination (IP + endpoint for auth endpoints)
+
+---
+
+### PHASE 8: ERROR HANDLING
+
+#### 8.1 Error Response Format
+
+Use consistent format across all endpoints:
+```
+{
+  "error": {
+    "code": "RESOURCE_NOT_FOUND",      // Machine-readable
+    "message": "User not found",        // Human-readable
+    "details": { ... }                  // Optional: additional context
+  }
+}
+```
+
+#### 8.2 Error Handling Principles
+
+**For Clients**
+- Return appropriate HTTP status codes
+- Provide actionable error messages
+- Never expose internal details (stack traces, queries, paths)
+- Include request ID for support tickets
+
+**For Operations**
+- Log all errors with full context
+- Structure logs for searchability
+- Include: request ID, user ID, endpoint, timestamp, stack trace
+- Mask sensitive data in logs
+
+**Error Categories**
+| Type | Status | How to Handle |
+|------|--------|---------------|
+| Validation Error | 400 | Return all field errors |
+| Authentication Error | 401 | Clear message, don't reveal if user exists |
+| Authorization Error | 403 | Clear message about what's not allowed |
+| Not Found | 404 | Generic "not found" (don't reveal existence) |
+| Conflict | 409 | Explain what conflicted |
+| Server Error | 500 | Generic message, log full details |
+
+---
+
+### PHASE 9: LOGGING & OBSERVABILITY
+
+#### 9.1 Logging Requirements
+
+**What to Log**
+- All requests (method, path, status, duration)
+- All errors (with context)
+- Authentication events (login, logout, failures)
+- Authorization failures
+- Business-critical events (orders, payments, etc.)
+- Slow operations (queries, external calls)
+
+**What NOT to Log**
+- Passwords (plain or hashed)
+- API keys/secrets
+- Full credit card numbers
+- Personal data (unless required for debugging)
+- Health check requests (too noisy)
+
+**Log Format**
+- Structured JSON (not plain text)
+- Include: timestamp, level, message, request_id, user_id, context
+- Consistent field names across services
+
+**Log Levels**
+| Level | When to Use |
+|-------|-------------|
+| ERROR | Operation failed, needs attention |
+| WARN | Unexpected but handled, potential issue |
+| INFO | Normal operations, key events |
+| DEBUG | Detailed info for troubleshooting (not in production) |
+
+#### 9.2 Monitoring Metrics
+
+**RED Method (For Services)**
+- **R**ate: Requests per second
+- **E**rrors: Failed requests per second
+- **D**uration: Time per request (p50, p95, p99)
+
+**USE Method (For Resources)**
+- **U**tilization: How much is used (CPU %, memory %)
+- **S**aturation: How queued up is work
+- **E**rrors: Error count
+
+**Key Metrics to Track**
+- Request rate overall and per endpoint
+- Error rate overall and by type
+- Latency (p50, p95, p99)
+- Database query time
+- External service call time
+- Cache hit rate
+- Queue depth (if using queues)
+
+#### 9.3 Distributed Tracing
+
+For multi-service systems:
+- Generate request ID at entry point
+- Pass through all service calls
+- Include in all logs
+- Enables end-to-end request tracking
+
+---
+
+### PHASE 10: SECURITY HARDENING
+
+#### 10.1 OWASP Top 10 Protection
+
+| Vulnerability | Prevention |
+|--------------|------------|
+| **Injection** | Parameterized queries, input validation, ORM |
+| **Broken Authentication** | Strong passwords, MFA, secure session management |
+| **Sensitive Data Exposure** | Encrypt at rest/transit, minimize data collection |
+| **XXE** | Disable external entities in XML parsers |
+| **Broken Access Control** | Check authorization on every request |
+| **Security Misconfiguration** | Secure defaults, remove debug info in production |
+| **XSS** | Output encoding, CSP headers |
+| **Insecure Deserialization** | Validate input structure, use safe formats |
+| **Using Vulnerable Components** | Keep dependencies updated, scan regularly |
+| **Insufficient Logging** | Comprehensive logging and monitoring |
+
+#### 10.2 Security Headers
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| Strict-Transport-Security | max-age=31536000; includeSubDomains | Force HTTPS |
+| X-Content-Type-Options | nosniff | Prevent MIME sniffing |
+| X-Frame-Options | DENY | Prevent clickjacking |
+| Content-Security-Policy | script-src 'self' | Control resource sources |
+| Referrer-Policy | strict-origin-when-cross-origin | Control referrer info |
+
+#### 10.3 Encryption
+
+**In Transit**
+- TLS 1.2 minimum, prefer 1.3
+- Valid certificates (Let's Encrypt is free)
+- HTTPS only (redirect HTTP)
+
+**At Rest**
+- Database-level encryption
+- Encrypt individual sensitive fields
+- Encrypt file storage
+
+**Secrets Management**
+- Never commit secrets to code
+- Use environment variables or secret manager
+- Rotate secrets regularly
+- Different secrets per environment
+
+---
+
+### PHASE 11: BACKGROUND JOBS & QUEUES
+
+#### 11.1 When to Use Background Jobs
+
+- Sending emails/notifications
+- Processing uploads
+- Generating reports
+- Calling slow external APIs
+- Any operation > 2 seconds
+
+#### 11.2 Queue Patterns
+
+**At-Least-Once Delivery**
+- Default for most queues
+- Job may run multiple times
+- Make operations idempotent
+
+**Idempotency**
+- Running job twice produces same result as once
+- Use idempotency keys for external operations
+- Check if already processed before processing
+
+**Retry Strategy**
+- Exponential backoff (double wait time each retry)
+- Maximum retry count (3-5 typically)
+- Dead letter queue for failed jobs
+- Alert on dead letter queue growth
+
+---
+
+### PHASE 12: EXTERNAL INTEGRATIONS
+
+#### 12.1 Calling External APIs
+
+**Resilience**
+- Set timeouts (connect: 5s, read: 30s typical)
+- Implement retry with backoff (for idempotent calls)
+- Circuit breaker for persistent failures
+- Fallback behavior when service unavailable
+
+**Security**
+- Store API keys securely
+- Use least privilege tokens
+- Validate response data (don't trust external sources)
+
+**Logging**
+- Log all external calls (URL, status, duration)
+- Mask sensitive data in logs
+- Track failure rates
+
+#### 12.2 Webhooks (Receiving)
+
+**Verification**
+- Validate signature if provided
+- Verify IP allowlist if applicable
+- Check timestamp to prevent replay
+
+**Processing**
+- Respond quickly (2-5 seconds max)
+- Process in background job
+- Make processing idempotent (webhooks may repeat)
+- Acknowledge receipt, process async
 
 ---
 
@@ -764,45 +705,74 @@ this.logger.error({ error, userId }, 'Failed to process payment');
 Before marking backend complete:
 
 ### API
-- [ ] All endpoints implemented per API spec
-- [ ] All endpoints validate input
-- [ ] All endpoints handle authentication
-- [ ] All endpoints check authorization
-- [ ] All endpoints return correct status codes
-- [ ] All error responses follow standard format
-- [ ] Rate limiting implemented
-- [ ] Pagination on list endpoints
+- [ ] All endpoints implemented per API contract
+- [ ] Request validation on all inputs
+- [ ] Consistent response format
+- [ ] Proper HTTP status codes
+- [ ] API documentation complete and accurate
+- [ ] Versioning in place
+
+### Authentication & Authorization
+- [ ] Authentication working for all protected routes
+- [ ] Password hashing with Argon2id/bcrypt
+- [ ] Token expiration and refresh working
+- [ ] Authorization checked on every request
+- [ ] Resource ownership verified
+- [ ] Session/token revocation possible
 
 ### Security
-- [ ] Passwords hashed with Argon2id/bcrypt
-- [ ] JWT tokens short-lived (15 min)
-- [ ] Refresh token rotation implemented
-- [ ] All inputs validated and sanitized
-- [ ] SQL injection impossible
+- [ ] SQL injection impossible (parameterized queries)
+- [ ] All inputs validated
 - [ ] Secrets in environment variables
+- [ ] HTTPS enforced
 - [ ] Security headers configured
-- [ ] CORS configured properly
+- [ ] Rate limiting active
+- [ ] Audit logging enabled
 
 ### Database
-- [ ] Schema matches design
-- [ ] Migrations created
+- [ ] Schema migrations versioned
 - [ ] Indexes on query columns
-- [ ] Transactions for multi-step operations
 - [ ] No N+1 queries
+- [ ] Connection pooling configured
+- [ ] Backup strategy in place
 
-### Code Quality
-- [ ] TypeScript strict mode
-- [ ] No any types (or justified)
-- [ ] Error handling everywhere
-- [ ] Logging in key operations
-- [ ] Tests written (> 80% coverage)
+### Reliability
+- [ ] Error handling on all paths
+- [ ] Graceful error responses
+- [ ] Health check endpoint
+- [ ] Logging comprehensive
+- [ ] Monitoring in place
 
 ### Performance
-- [ ] Response time < 200ms (P95)
-- [ ] Connection pooling configured
+- [ ] Response times within target (p95 < 200ms)
+- [ ] Database queries optimized
 - [ ] Caching where appropriate
-- [ ] Queries optimized
+- [ ] Load tested
 
 ---
 
-**Reference this document when building any backend code.**
+## 💡 HARD-LEARNED LESSONS
+
+1. **Never trust client input**: Validate everything on the server, even if validated on client.
+
+2. **Authentication ≠ Authorization**: Being logged in doesn't mean allowed to do everything.
+
+3. **Every endpoint can be called directly**: Frontend hiding a button doesn't prevent API call.
+
+4. **Logging saves days of debugging**: Log comprehensively, you'll thank yourself.
+
+5. **Idempotency prevents disasters**: Networks fail, retries happen, design for it.
+
+6. **Databases are the bottleneck**: Most performance issues are database-related.
+
+7. **Caching is hard**: Invalidation bugs are worse than no caching at all.
+
+8. **Rate limiting is mandatory**: Without it, one client can take down your service.
+
+9. **Background jobs need monitoring**: Silent failures are the worst kind.
+
+10. **Security is not optional**: One breach can destroy everything you've built.
+
+---
+
+**Apply this knowledge to every backend decision.**
